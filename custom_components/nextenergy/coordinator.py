@@ -12,7 +12,6 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .const import (
     DOMAIN,
-    NEXTENERGY_ANONYMOUS_CSRF_TOKEN,
     NEXTENERGY_BASE_URL,
     NEXTENERGY_BLOCK_SCRIPT_PATH,
     NEXTENERGY_MARKET_PRICES_URL,
@@ -150,6 +149,19 @@ class NextEnergyCoordinator(DataUpdateCoordinator):
             ) as resp:
                 resp.raise_for_status()
 
+            csrf_token = next(
+                (
+                    cookie.value
+                    for name, cookie in session.cookie_jar.filter_cookies(
+                        NEXTENERGY_MARKET_PRICES_URL
+                    ).items()
+                    if "csrf" in name.lower()
+                ),
+                None,
+            )
+            if not csrf_token:
+                raise UpdateFailed("Next Energy: CSRF-token niet gevonden in cookies")
+
             payload = {
                 "versionInfo": {
                     "moduleVersion": version_info["moduleVersion"],
@@ -185,7 +197,7 @@ class NextEnergyCoordinator(DataUpdateCoordinator):
                     "Origin": "https://mijn.nextenergy.nl",
                     "Referer": NEXTENERGY_MARKET_PRICES_URL,
                     "OutSystems-locale": "nl-NL",
-                    "X-CSRFToken": NEXTENERGY_ANONYMOUS_CSRF_TOKEN,
+                    "X-CSRFToken": csrf_token,
                 },
             ) as resp:
                 resp.raise_for_status()
