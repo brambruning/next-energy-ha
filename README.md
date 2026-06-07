@@ -102,6 +102,29 @@ actions:
       entity_id: switch.boiler
 ```
 
+### Stop teruglevering bij negatieve prijs
+
+Stop teruglevering als de prijs negatief is.
+
+```yaml
+alias: Bij negatieve prijs zonnepanelen uitschakelen
+description: Bij negatieve prijs zonnepanelen uitschakelen
+triggers:
+  - trigger: numeric_state
+    entity_id: sensor.next_energy_huidige_prijs
+    attribute: ct_kwh
+    below: 0
+conditions: []
+actions:
+  - device_id: 1c8a987be4272930ea33cec7169d6ccf
+    domain: number
+    entity_id: f29f3b6eeb91c12c3f4b43d844fc8aab
+    type: set_value
+    value: 0
+mode: single
+
+
+
 ## Licentie
 
 MIT
