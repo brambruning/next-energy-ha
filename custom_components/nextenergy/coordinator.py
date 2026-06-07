@@ -31,6 +31,7 @@ _API_VERSION_RE = re.compile(
     r'"screenservices/Website_CW/Blocks/WB_EnergyPrices/DataActionGetDataPoints",\s*'
     r'"([^"]+)"'
 )
+_CSRF_TOKEN_RE = re.compile(r'"csrfToken"\s*:\s*"([^"]+)"')
 _HOUR_TOOLTIP_RE = re.compile(r"(\d{1,2})u")
 _STRIP_NON_NUMERIC_RE = re.compile(r"[^0-9,.\-]")
 
@@ -148,19 +149,25 @@ class NextEnergyCoordinator(DataUpdateCoordinator):
                 headers={"Accept": "text/html"},
             ) as resp:
                 resp.raise_for_status()
+                html = await resp.text()
 
-            csrf_token = next(
-                (
-                    cookie.value
-                    for name, cookie in session.cookie_jar.filter_cookies(
-                        NEXTENERGY_MARKET_PRICES_URL
-                    ).items()
-                    if "csrf" in name.lower()
-                ),
-                None,
-            )
+            csrf_token = None
+            if m := _CSRF_TOKEN_RE.search(html):
+                csrf_token = m.group(1)
+            else:
+                csrf_token = next(
+                    (
+                        cookie.value
+                        for name, cookie in session.cookie_jar.filter_cookies(
+                            NEXTENERGY_MARKET_PRICES_URL
+                        ).items()
+                        if "csrf" in name.lower()
+                    ),
+                    None,
+                )
+
             if not csrf_token:
-                raise UpdateFailed("Next Energy: CSRF-token niet gevonden in cookies")
+                raise UpdateFailed("Next Energy: CSRF-token niet gevonden in pagina of cookies")
 
             payload = {
                 "versionInfo": {
