@@ -19,6 +19,7 @@ from .const import (
     NEXTENERGY_MODULE_VERSION_URL,
     NEXTENERGY_SCREENSERVICE_URL,
     NEXTENERGY_VIEW_NAME,
+    NEXTENERGY_OUTSYSTEMS_JS_PATH,
     TIMEZONE,
     UPDATE_INTERVAL_MINUTES,
     VERSION_CACHE_HOURS,
@@ -31,7 +32,7 @@ _API_VERSION_RE = re.compile(
     r'"screenservices/Website_CW/Blocks/WB_EnergyPrices/DataActionGetDataPoints",\s*'
     r'"([^"]+)"'
 )
-_CSRF_TOKEN_RE = re.compile(r'"csrfToken"\s*:\s*"([^"]+)"')
+_ANON_CSRF_RE = re.compile(r'AnonymousCSRFToken\s*=\s*"([^"]+)"')
 _HOUR_TOOLTIP_RE = re.compile(r"(\d{1,2})u")
 _STRIP_NON_NUMERIC_RE = re.compile(r"[^0-9,.\-]")
 
@@ -97,13 +98,15 @@ class NextEnergyCoordinator(DataUpdateCoordinator):
             resp.raise_for_status()
             data = await resp.json(content_type=None)
 
-        script_version = (
-            data.get("manifest", {})
-            .get("urlVersions", {})
-            .get(NEXTENERGY_BLOCK_SCRIPT_PATH)
-        )
+        url_versions = data.get("manifest", {}).get("urlVersions", {})
+
+        script_version = url_versions.get(NEXTENERGY_BLOCK_SCRIPT_PATH)
         if not script_version:
             raise UpdateFailed("Next Energy: block script versie niet gevonden")
+
+        outsystems_js_version = url_versions.get(NEXTENERGY_OUTSYSTEMS_JS_PATH)
+        if not outsystems_js_version:
+            raise UpdateFailed("Next Energy: OutSystems.js versie niet gevonden")
 
         script_url = (
             f"{NEXTENERGY_BASE_URL}/scripts/"
@@ -117,9 +120,21 @@ class NextEnergyCoordinator(DataUpdateCoordinator):
         if not match:
             raise UpdateFailed("Next Energy: apiVersion niet gevonden in block script")
 
+        outsystems_js_url = (
+            f"{NEXTENERGY_BASE_URL}/scripts/OutSystems.js{outsystems_js_version}"
+        )
+        async with session.get(outsystems_js_url, headers={"Accept": "*/*"}) as resp:
+            resp.raise_for_status()
+            js_text = await resp.text()
+
+        csrf_match = _ANON_CSRF_RE.search(js_text)
+        if not csrf_match:
+            raise UpdateFailed("Next Energy: AnonymousCSRFToken niet gevonden in OutSystems.js")
+
         self._version_info = {
             "moduleVersion": module_version,
             "apiVersion": match.group(1),
+            "csrfToken": csrf_match.group(1),
         }
         self._version_fetched_at = now
         _LOGGER.debug("Next Energy: versie-info geladen: %s", self._version_info)
@@ -149,25 +164,6 @@ class NextEnergyCoordinator(DataUpdateCoordinator):
                 headers={"Accept": "text/html"},
             ) as resp:
                 resp.raise_for_status()
-                html = await resp.text()
-
-            csrf_token = None
-            if m := _CSRF_TOKEN_RE.search(html):
-                csrf_token = m.group(1)
-            else:
-                csrf_token = next(
-                    (
-                        cookie.value
-                        for name, cookie in session.cookie_jar.filter_cookies(
-                            NEXTENERGY_MARKET_PRICES_URL
-                        ).items()
-                        if "csrf" in name.lower()
-                    ),
-                    None,
-                )
-
-            if not csrf_token:
-                raise UpdateFailed("Next Energy: CSRF-token niet gevonden in pagina of cookies")
 
             payload = {
                 "versionInfo": {
@@ -204,7 +200,7 @@ class NextEnergyCoordinator(DataUpdateCoordinator):
                     "Origin": "https://mijn.nextenergy.nl",
                     "Referer": NEXTENERGY_MARKET_PRICES_URL,
                     "OutSystems-locale": "nl-NL",
-                    "X-CSRFToken": csrf_token,
+                    "X-CSRFToken": version_info["csrfToken"],
                 },
             ) as resp:
                 resp.raise_for_status()
