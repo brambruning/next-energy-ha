@@ -1,0 +1,16 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Next Energy instellen",
+        "description": "Klik op Verzenden om verbinding te testen met de Next Energy API."
+      }
+    },
+    "error": {
+      "cannot_connect": "Kan geen verbinding maken met Next Energy. Controleer je internetverbinding."
+    },
+    "abort": {
+      "already_configured": "Next Energy is al geconfigureerd."
+    }
+  }
+}
